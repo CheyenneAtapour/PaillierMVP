@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 		printf("random number generated for vote: %d\n", random);
 		vote = paillier_plaintext_from_ui(random);
 		enc_vote = paillier_enc(NULL, pubKey, vote, paillier_get_rand_devurandom);
-		printf("encrypted vote: %Zd\n", enc_vote);
+		gmp_printf("encrypted vote: %Zd\n", enc_vote);
 		paillier_mul(pubKey, encrypted_sum, encrypted_sum, enc_vote);
 		gmp_printf("running encrypted sum: %Zd\n", encrypted_sum); 
 		printf("\n");
