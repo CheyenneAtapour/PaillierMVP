@@ -47,6 +47,7 @@ int main(int argc, char **argv)
 	paillier_plaintext_t* decrypted;
 	decrypted = paillier_dec(NULL, pubKey, secKey, enc_vote);
 	gmp_printf("Ciphertext decrypted: %Zd\n", decrypted);
+	printf("\n");
 
 	// Initialize the ciphertext that will hold the sum with an encryption of zero
     	paillier_ciphertext_t* encrypted_sum = paillier_create_enc_zero();
@@ -62,7 +63,10 @@ int main(int argc, char **argv)
 		printf("random number generated for vote: %d\n", random);
 		vote = paillier_plaintext_from_ui(random);
 		enc_vote = paillier_enc(NULL, pubKey, vote, paillier_get_rand_devurandom);
+		printf("encrypted vote: %Zd\n", enc_vote);
 		paillier_mul(pubKey, encrypted_sum, encrypted_sum, enc_vote);
+		gmp_printf("running encrypted sum: %Zd\n", encrypted_sum); 
+		printf("\n");
 	}
 	
 	// Decrypt the sum of votes
