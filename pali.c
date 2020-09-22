@@ -1,7 +1,23 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
 #include <gmp.h>
 #include <paillier.h>
 
+
+int max(int a, int b)
+{
+	if (a < b)
+		return b;
+	else
+		return a;
+}
+
+int max3(int a, int b, int c)
+{
+	return max(a, max(b, c));
+}
 
 int main(int argc, char **argv) 
 {
@@ -12,67 +28,82 @@ int main(int argc, char **argv)
 
 	printf("Public key generated:\n%s\n", paillier_pubkey_to_hex(pubKey));
 
-	// Create plaintext of 0
+	// Initialize random seed
+	srand(time(0));
+
+	// Generate a random plaintext
+	int random = pow(100, rand() % 3);	
+	printf("random number generated for vote: %d\n", random);
 	paillier_plaintext_t* vote;	
-	vote = paillier_plaintext_from_ui(0);	
+	vote = paillier_plaintext_from_ui(random);	
 	gmp_printf("Plaintext created: %Zd\n", vote);
 
-	// Encrypt the plaintext of 0
-	paillier_ciphertext_t* cipher;
-	cipher = paillier_enc(NULL, pubKey, vote, paillier_get_rand_devurandom);
-	gmp_printf("Ciphertext created: %Zd\n", cipher);
+	// Encrypt the first random plaintext
+	paillier_ciphertext_t* enc_vote;
+	enc_vote = paillier_enc(NULL, pubKey, vote, paillier_get_rand_devurandom);
+	gmp_printf("Ciphertext created: %Zd\n", enc_vote);
 
-	// Decrypt the ciphertext of 0
+	// Decrypt the first random plaintext
 	paillier_plaintext_t* decrypted;
-	decrypted = paillier_dec(NULL, pubKey, secKey, cipher);
+	decrypted = paillier_dec(NULL, pubKey, secKey, enc_vote);
 	gmp_printf("Ciphertext decrypted: %Zd\n", decrypted);
 
-	// Create plaintext of 1
-	paillier_plaintext_t* vote1;	
-	vote1 = paillier_plaintext_from_ui(1);	
-	gmp_printf("Plaintext created: %Zd\n", vote1);
+	// Initialize the ciphertext that will hold the sum with an encryption of zero
+    	paillier_ciphertext_t* encrypted_sum = paillier_create_enc_zero();
 
-	// Encrypt the plaintext of 1
-	paillier_ciphertext_t* cipher1;
-	cipher1 = paillier_enc(NULL, pubKey, vote1, paillier_get_rand_devurandom);
-	gmp_printf("Ciphertext created: %Zd\n", cipher1);
-
-	// Decrypt the ciphertext of 1
-	paillier_plaintext_t* decrypted1;
-	decrypted1 = paillier_dec(NULL, pubKey, secKey, cipher1);
-	gmp_printf("Ciphertext decrypted: %Zd\n", decrypted1);
-
-	// Create plaintext of 2
-	paillier_plaintext_t* vote2;	
-	vote2 = paillier_plaintext_from_ui(2);	
-	gmp_printf("Plaintext created: %Zd\n", vote2);
-
-	// Encrypt the plaintext of 2
-	paillier_ciphertext_t* cipher2;
-	cipher2 = paillier_enc(NULL, pubKey, vote2, paillier_get_rand_devurandom);
-	gmp_printf("Ciphertext created: %Zd\n", cipher2);
-
-	// Decrypt the ciphertext of 2
-	paillier_plaintext_t* decrypted2;
-	decrypted2 = paillier_dec(NULL, pubKey, secKey, cipher2);
-	gmp_printf("Ciphertext decrypted: %Zd\n", decrypted2);
+	// Sum the first vote
+	paillier_mul(pubKey, encrypted_sum, encrypted_sum, enc_vote);
+    	gmp_printf("Sum's ciphertext: %Zd\n", encrypted_sum);
 
 	// Make 100 random valid votes 
+	for (int i = 0; i < 99; i++)
+	{
+		random = pow(100, rand() % 3);
+		printf("random number generated for vote: %d\n", random);
+		vote = paillier_plaintext_from_ui(random);
+		enc_vote = paillier_enc(NULL, pubKey, vote, paillier_get_rand_devurandom);
+		paillier_mul(pubKey, encrypted_sum, encrypted_sum, enc_vote);
+	}
+	
+	// Decrypt the sum of votes
+	paillier_plaintext_t* dec;
+    	dec = paillier_dec(NULL, pubKey, secKey, encrypted_sum);
+    	gmp_printf("Decrypted sum of votes: %Zd\n", dec);
+	
+	// Convert decrypted plaintext to int
+	int result = mpz_get_ui(dec->m);
+	
+	// Handle special cases
+	if (result == 1000000)
+		printf("Unanimous vote for increasing block size!\n");
+	else if (result == 10000)
+		printf("Unanimous vote for unchanging block size!\n");
+	else if (result == 100)
+		printf("Unanimous vote for decreasing block size!\n");
+	else
+	{
+		// Print the result of the election
+		int inc_votes = result / 10000;
+		int unc_votes = (result % 10000) / 100;
+		int dec_votes = result % 100;
+		int majority = max3(inc_votes, unc_votes, dec_votes);
+		if (majority == inc_votes)
+			printf("Majority voted to increase block size!\n");
+		else if (majority == unc_votes)
+			printf("Majority voted to unchange block size!\n");
+		else
+			printf("Majority voted to decrease block size!\n");
+	}
 
-	// Print the result of the election
-
-
-	// Show that a vote can't be invalid invoking zkps
+	// TODO: Show that a vote can't be invalid invoking zkps
 
 	// Free memory
 	paillier_freepubkey(pubKey);
 	paillier_freeprvkey(secKey);
 	paillier_freeplaintext(vote);
-	paillier_freeplaintext(vote1);
 	paillier_freeplaintext(decrypted);
-	paillier_freeplaintext(decrypted1);
-	paillier_freeciphertext(cipher);
-	paillier_freeciphertext(cipher1);
+	paillier_freeciphertext(enc_vote);
+	paillier_freeciphertext(encrypted_sum);
 
 	return 0;
 }
