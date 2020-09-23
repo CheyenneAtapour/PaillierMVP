@@ -1,10 +1,14 @@
+/*
+	Note that this code uses a modified Paillierlib that includes the random value 'r' with each ciphertext.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <openssl/sha.h>
 #include <gmp.h>
-#include <paillier.h>
+#include "paillier.c" 
 
 
 void get_rand_file( void* buf, int len, char* file )
@@ -60,6 +64,7 @@ int main(int argc, char *argv[])
 	paillier_ciphertext_t* c;
 	c = paillier_enc(NULL, pubKey, m, paillier_get_rand_devurandom);
 	gmp_printf("Ciphertext created: %Zd\n", c);	
+	printf("\n");
 	
 	// Now verify that ctxt1 is a valid message
 	// Following https://paillier.daylightingsociety.org/Paillier_Zero_Knowledge_Proof.pdf
@@ -214,14 +219,14 @@ int main(int argc, char *argv[])
 	// Calculate a_1
 	mpz_powm(z_n, z_1, pubKey->n, pubKey->n_squared);
 	mpz_powm(u_e, u_1, e_1, pubKey->n_squared);
-	mpz_invert(a_1, u_1, pubKey->n_squared);
+	mpz_invert(a_1, u_e, pubKey->n_squared);
 	mpz_mul(a_1, z_n, a_1);
 	mpz_mod(a_1, a_1, pubKey->n_squared);
 
 	// Calculate a_3
 	mpz_powm(z_n, z_3, pubKey->n, pubKey->n_squared);
 	mpz_powm(u_e, u_3, e_3, pubKey->n_squared);
-	mpz_invert(a_3, u_3, pubKey->n_squared);
+	mpz_invert(a_3, u_e, pubKey->n_squared);
 	mpz_mul(a_3, z_n, a_3);
 	mpz_mod(a_3, a_3, pubKey->n_squared);
 	
@@ -249,11 +254,137 @@ int main(int argc, char *argv[])
 	mpz_set_str(e_c, encrypted, 16);
 	//gmp_printf("challenge string after hash: %Zd\n", e_c);
 
-	// Calculate z_2 and e_2 (for m_i == m)
+	// Calculate e_2 (for m_i == m)
+	mpz_t e_2;
+	mpz_t two_raised_b;
 	
+	mpz_init(e_2);
+	mpz_init(two_raised_b);	
 
+	mpz_set_ui(two_raised_b, 2);
+	mpz_pow_ui(two_raised_b, two_raised_b, 256 / 2 - 1);
+
+	mpz_sub(e_2, e_c, e_1);
+	mpz_sub(e_2, e_2, e_3);
+	mpz_mod(e_2, e_2, two_raised_b);
 	
+	// Calculate z_2 (for m_i == m)
+	mpz_t z_2;
+	mpz_init(z_2);
 
+/*	
+	// See if we can recover r
+	// u_2 should already be r^n mod n^2
+	mpz_t r;
+	mpz_init(r);
+	mpz_mod(r, u_2, pubKey->n); // hopefully r is assigned now
+	// test r by exponentiating to n mod n^2
+	// then multiply r by g_m2 and see if that is same as ciphertext 	
+	mpz_powm(r, c->r, pubKey->n, pubKey->n_squared);
+	mpz_mul(r, r, g_m2);
+	mpz_mod(r, r, pubKey->n_squared);
+	gmp_printf("r is now: %Zd\n", r);
+	// Make sure my r is correct:
+*/
+
+	mpz_powm(z_2, c->r, e_2, pubKey->n);
+	mpz_mul(z_2, w, z_2);
+	mpz_mod(z_2, z_2, pubKey->n);
+
+	// Now we verify
+	// Sum up all e_k and confirm it equals e_c
+	mpz_t sum;
+	mpz_init(sum);
+	
+	mpz_add(sum, e_1, e_2);
+	mpz_add(sum, sum, e_3);
+	mpz_mod(sum, sum, two_raised_b);
+
+	mpz_mod(e_c, e_c, two_raised_b);
+
+	if (mpz_cmp(e_c, sum) == 0)
+	{
+		printf("Verified sum of e_k equals challenge string!\n"); 
+		gmp_printf("sum: %Zd\n", sum);
+		gmp_printf("e_c: %Zd\n", e_c);
+	}
+	else
+	{
+		printf("Prover failed the challenge. CHEATER!\n");
+		gmp_printf("sum: %Zd\n", sum);
+		gmp_printf("e_c: %Zd\n", e_c);
+	}
+	printf("\n");
+
+	// Verify z_k^n = a_k * u_k^e_k mod n^2
+	// use res for right side, z_n for left side
+	mpz_powm(z_n, z_1, pubKey->n, pubKey->n_squared);
+	mpz_powm(res, u_1, e_1, pubKey->n_squared);
+	mpz_mul(res, a_1, res);
+	mpz_mod(res, res, pubKey->n_squared);
+	
+	int verified = 1;
+
+	if (mpz_cmp(z_n, res) == 0)
+	{
+		printf("Verified z_1 = a_1 * u_1!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+	}
+	else
+	{
+		printf("Prover failed the challenge. CHEATER!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+		verified = 0;
+	}	
+	printf("\n");
+
+	mpz_powm(z_n, z_2, pubKey->n, pubKey->n_squared);
+	mpz_powm(res, u_2, e_2, pubKey->n_squared);
+	mpz_mul(res, a_2, res);
+	mpz_mod(res, res, pubKey->n_squared);
+	
+	if (mpz_cmp(z_n, res) == 0)
+	{
+		printf("Verified z_2 = a_2 * u_2!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+	}
+	else
+	{
+		printf("Prover failed the challenge. CHEATER!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+		verified = 0;
+	}
+	printf("\n");
+
+	mpz_powm(z_n, z_3, pubKey->n, pubKey->n_squared);
+	mpz_powm(res, u_3, e_3, pubKey->n_squared);
+	mpz_mul(res, a_3, res);
+	mpz_mod(res, res, pubKey->n_squared);
+	
+	if (mpz_cmp(z_n, res) == 0)
+	{
+		printf("Verified z_3 = a_3 * u_3!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+	}
+	else
+	{
+		printf("Prover failed the challenge. CHEATER!\n");
+		gmp_printf("z_n: %Zd\n", z_n);
+		gmp_printf("a_k * u_k: %Zd\n", res);
+		verified = 0;
+	}
+	printf("\n");
+	
+	if (verified == 1)
+		printf("This voter voted responsibly. Accept block\n");
+	else
+		printf("This voter cheated! Reject block\n");
+	
 	// Create an invalid ctxt2 and prove it's invalid
     
 	// Cleaning up
