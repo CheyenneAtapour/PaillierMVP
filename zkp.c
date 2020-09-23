@@ -302,6 +302,7 @@ int main(int argc, char *argv[])
 	gmp_printf("e_1: %Zd\n", e_1);
 	gmp_printf("e_2: %Zd\n", e_2);
 	gmp_printf("e_3: %Zd\n", e_3);
+	printf("\n");
 
 	// Now we verify
 	// Sum up all e_k and confirm it equals e_c

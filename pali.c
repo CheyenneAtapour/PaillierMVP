@@ -90,11 +90,19 @@ int main(int argc, char **argv)
 		int inc_votes = result / 10000;
 		int unc_votes = (result % 10000) / 100;
 		int dec_votes = result % 100;
-		int majority = max3(inc_votes, unc_votes, dec_votes);
-		if (majority == inc_votes)
-			printf("Majority voted to increase block size!\n");
+	
+		// Majority will default to unchange if maximal
+		int majority = max3(unc_votes, inc_votes, dec_votes);
+
+		// If tied, default to unchange
+		if (inc_votes == dec_votes && inc_votes > unc_votes || 
+		    dec_votes == unc_votes && dec_votes > inc_votes ||
+		    inc_votes == unc_votes && inc_votes > dec_votes)
+			printf("Consensus not reached -> unchanged block size!\n");
 		else if (majority == unc_votes)
-			printf("Majority voted to unchange block size!\n");
+			printf("Majority voted to unchange block size!\n");		
+		else if (majority == inc_votes)
+			printf("Majority voted to increase block size!\n");
 		else
 			printf("Majority voted to decrease block size!\n");
 	}
