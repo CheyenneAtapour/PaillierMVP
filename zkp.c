@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <openssl/sha.h>
 #include <gmp.h>
 #include <paillier.h>
 
@@ -30,6 +31,13 @@ void get_rand_devurandom( void* buf, int len )
 	get_rand_file(buf, len, "/dev/urandom");
 }
 
+void print_hash(char * d)
+{
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+		printf("%02x", d[i]);
+	printf("\n");
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -51,14 +59,14 @@ int main(int argc, char *argv[])
 	// Encrypt the messages
 	paillier_ciphertext_t* c;
 	c = paillier_enc(NULL, pubKey, m, paillier_get_rand_devurandom);
-	gmp_printf("Ciphertext created: %Zd\n", c);
-
+	gmp_printf("Ciphertext created: %Zd\n", c);	
+	
 	// Now verify that ctxt1 is a valid message
 	// Following https://paillier.daylightingsociety.org/Paillier_Zero_Knowledge_Proof.pdf
 	// Declare variables
 	mpz_t u_1;
 	mpz_t u_2;
-	mpz_t u_3;
+	mpz_t u_3;	
 	
 	mpz_t m1;
 	mpz_t m2;
@@ -126,13 +134,22 @@ int main(int argc, char *argv[])
 	// TODO: use better random number generation
 	mpz_t e_1;
 	mpz_t e_3;
+	mpz_t z_1;
+	mpz_t z_3;
+	mpz_t w;
+	mpz_t res;
 		
 	mpz_init(e_1);
 	mpz_init(e_3);
+	mpz_init(z_1);
+	mpz_init(z_3);
+	mpz_init(w);
+	mpz_init(res);
 	
 	// Initialize random state for rng
 	void* buf;
 	mpz_t s;
+	
 	buf = malloc(16);
 	get_rand_devurandom(buf, 16);
 	mpz_init(s);
@@ -141,12 +158,100 @@ int main(int argc, char *argv[])
 	gmp_randinit_mt(rand_state);
 	srand(time(0));
 	gmp_randseed(rand_state, s);
+
+	mpz_clear(s);
+	free(buf);
 	
 	// Generate e_1 and e_3
+	// p and q are 256/2 bits each, so our b is 1 less bit than that to ensure 2^b < p,q
 	mpz_urandomb(e_1, rand_state, 256 / 2 - 1);
 	mpz_urandomb(e_3, rand_state, 256 / 2 - 1); 
 	
-	// Generate co-primes for z_k's
+	// Generate z_1 and z_3
+	// since n = pq, every number smaller than n that is not p or q is coprime to n
+	mpz_urandomb(z_1, rand_state, 255);
+	mpz_gcd(res, z_1, pubKey->n);
+	while (mpz_cmp_ui(res, 1) != 0)
+	{
+		mpz_urandomb(z_1, rand_state, 255);
+		mpz_gcd(res, z_1, pubKey->n);
+	}
+	mpz_set_ui(res, 2);
+	mpz_urandomb(z_3, rand_state, 255);
+	mpz_gcd(res, z_3, pubKey->n);
+	while (mpz_cmp_ui(res, 1) != 0)
+	{
+		mpz_urandomb(z_3, rand_state, 255);
+		mpz_gcd(res, z_3, pubKey->n);
+	}
+	
+	// Generate omega
+	mpz_set_ui(res, 2);
+	mpz_urandomb(w, rand_state, 255);
+	mpz_gcd(res, w, pubKey->n);
+	while (mpz_cmp_ui(res, 1) != 0)
+	{
+		printf("entered while\n");
+		mpz_urandomb(w, rand_state, 255);
+		mpz_gcd(res, w, pubKey->n);
+	}
+	
+	// Calculate a_k's
+	mpz_t a_1;
+	mpz_t a_2;
+	mpz_t a_3;
+	
+	mpz_t z_n;
+	mpz_t u_e; 
+
+	mpz_init(a_1);
+	mpz_init(a_2);
+	mpz_init(a_3);
+	
+	mpz_init(z_n);
+	mpz_init(u_e);
+	
+	// Calculate a_1
+	mpz_powm(z_n, z_1, pubKey->n, pubKey->n_squared);
+	mpz_powm(u_e, u_1, e_1, pubKey->n_squared);
+	mpz_invert(a_1, u_1, pubKey->n_squared);
+	mpz_mul(a_1, z_n, a_1);
+	mpz_mod(a_1, a_1, pubKey->n_squared);
+
+	// Calculate a_3
+	mpz_powm(z_n, z_3, pubKey->n, pubKey->n_squared);
+	mpz_powm(u_e, u_3, e_3, pubKey->n_squared);
+	mpz_invert(a_3, u_3, pubKey->n_squared);
+	mpz_mul(a_3, z_n, a_3);
+	mpz_mod(a_3, a_3, pubKey->n_squared);
+	
+	// Calculate a_2 (for case m_i = m)
+	mpz_powm(a_2, w, pubKey->n, pubKey->n_squared);
+	
+	// Generate and hash a committed challenge string e_c
+	mpz_t e_c;
+	mpz_t temp;
+	mpz_init(e_c);
+	mpz_init(temp);	
+	mpz_urandomb(e_c, rand_state, 256 / 2 - 1); 		
+	//gmp_printf("challenge string before hash: %Zd\n", e_c);
+
+	char * str;
+	str = mpz_get_str(NULL, 10, e_c);
+	char * d = SHA256(str, strlen(str), 0);
+	char * encrypted;
+	encrypted = malloc(65);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+	{
+		sprintf(encrypted + (i*2), "%02x", d[i]);
+	}
+	encrypted[64] = 0;
+	mpz_set_str(e_c, encrypted, 16);
+	//gmp_printf("challenge string after hash: %Zd\n", e_c);
+
+	// Calculate z_2 and e_2 (for m_i == m)
+	
+
 	
 
 	// Create an invalid ctxt2 and prove it's invalid
