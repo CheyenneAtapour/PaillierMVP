@@ -267,10 +267,6 @@ int main(int argc, char *argv[])
 	mpz_sub(e_2, e_c, e_1);
 	mpz_sub(e_2, e_2, e_3);
 	mpz_mod(e_2, e_2, two_raised_b);
-	
-	// Calculate z_2 (for m_i == m)
-	mpz_t z_2;
-	mpz_init(z_2);
 
 /*	
 	// See if we can recover r
@@ -287,9 +283,26 @@ int main(int argc, char *argv[])
 	// Make sure my r is correct:
 */
 
+	// Calculate z_2 (for m_i == m)
+	mpz_t z_2;
+	mpz_init(z_2);
+
 	mpz_powm(z_2, c->r, e_2, pubKey->n);
 	mpz_mul(z_2, w, z_2);
 	mpz_mod(z_2, z_2, pubKey->n);
+
+	// Voter's commit
+	printf("Voter (prover) commits the following values to the verifier\n");
+	gmp_printf("z_1: %Zd\n", z_1);
+	gmp_printf("z_2: %Zd\n", z_2);
+	gmp_printf("z_3: %Zd\n", z_3);
+	gmp_printf("a_1: %Zd\n", a_1);
+	gmp_printf("a_2: %Zd\n", a_2);
+	gmp_printf("a_3: %Zd\n", a_3);
+	gmp_printf("e_1: %Zd\n", e_1);
+	gmp_printf("e_2: %Zd\n", e_2);
+	gmp_printf("e_3: %Zd\n", e_3);
+	printf("\n");
 
 	// Now we verify
 	// Sum up all e_k and confirm it equals e_c
