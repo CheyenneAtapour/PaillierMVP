@@ -152,7 +152,7 @@ paillier_enc( paillier_ciphertext_t* res,
 	mpz_set(res->r, r); // I added this
 
 	mpz_clear(x);
-	//mpz_clear(r);
+	mpz_clear(r);
   gmp_randclear(rand);
 
 	return res;

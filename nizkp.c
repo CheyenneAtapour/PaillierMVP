@@ -64,10 +64,6 @@ int main(int argc, char *argv[])
 	paillier_ciphertext_t* c;
 	c = paillier_enc(NULL, pubKey, m, paillier_get_rand_devurandom);
 	gmp_printf("Ciphertext created: %Zd\n", c);
-	mpz_t r;
-	mpz_init(r);
-	mpz_set(r, c->r);
-	gmp_printf("Ciphertext r: %Zd\n", r);	
 	printf("\n");
 	
 	// Now verify that ctxt1 is a valid message
@@ -200,7 +196,6 @@ int main(int argc, char *argv[])
 	mpz_gcd(res, w, pubKey->n);
 	while (mpz_cmp_ui(res, 1) != 0)
 	{
-		printf("entered while\n");
 		mpz_urandomb(w, rand_state, 255);
 		mpz_gcd(res, w, pubKey->n);
 	}
@@ -236,45 +231,25 @@ int main(int argc, char *argv[])
 	
 	// Calculate a_2 (for case m_i = m)
 	mpz_powm(a_2, w, pubKey->n, pubKey->n_squared);
-	
-	gmp_printf("Ciphertext r: %Zd\n", c->r);
 
-	// Generate and hash a committed challenge string e_c
+	// Concatenate a_k's and hash, making challenge string e_c
 	mpz_t e_c;
 	mpz_init(e_c);
-	//mpz_urandomb(e_c, rand_state, 256 / 2 - 1); 		
-	//gmp_printf("challenge string before hash: %Zd\n", e_c);
 	
 	char * a_1s = mpz_get_str(NULL, 10, a_1);
 	char * a_2s = mpz_get_str(NULL, 10, a_2);	
 	char * a_3s = mpz_get_str(NULL, 10, a_3);
-	printf("before malloc\n");
-	char * str; //malloc(sizeof(a_1s)/sizeof(a_1s[0]) + sizeof(a_2s)/sizeof(a_2s[0]) + sizeof(a_3s)/sizeof(a_3s[0]) + 1);
-	printf("after malloc\n");
+	char * str = malloc(sizeof(a_1s)/sizeof(a_1s[0]) + sizeof(a_2s)/sizeof(a_2s[0]) + sizeof(a_3s)/sizeof(a_3s[0]) + 1);	
 	
-	gmp_printf("Ciphertext r: %Zd\n", c->r);
-	
-	printf("a_1 : %s\n", a_1s);
-	printf("a_2 : %s\n", a_2s);
-	printf("a_3 : %s\n", a_3s);	
-
 	snprintf(str, sizeof(a_1s)/sizeof(a_1s[0]) + sizeof(a_2s)/sizeof(a_2s[0]) + sizeof(a_3s)/sizeof(a_3s[0]) + 1, "%s%s%s", a_1s, a_2s, a_3s);
-	//strcpy(str, strcat(a_1s, a_2s));
-	printf("s after 1st concat: %s\n", str);
-	//free(a_1s);
-	//free(a_2s);
-	//strcat(str, a_3s);
-	//free(a_3s);
-	//printf("s after 2nd concat: %s\n", str);
-	printf("just before printing r\n");
-	
-	//str = mpz_get_str(NULL, 10, e_c);
-	gmp_printf("Ciphertext r: %Zd\n", r);
 
 	char * d = SHA256(str, strlen(str), 0);
-	printf("hash: %s\n", d);
-	printf("here\n");
-	//free(str);
+	
+	free(str);
+	free(a_1s);
+	free(a_2s);
+	free(a_3s);
+	
 	char * encrypted;
 	encrypted = malloc(65);
 	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
@@ -283,7 +258,8 @@ int main(int argc, char *argv[])
 	}
 	encrypted[64] = 0;
 	mpz_set_str(e_c, encrypted, 16);
-	gmp_printf("challenge string after hash: %Zd\n", e_c);
+	
+	free(encrypted);
 
 	// Calculate e_2 (for m_i == m)
 	mpz_t e_2;
@@ -293,42 +269,20 @@ int main(int argc, char *argv[])
 	mpz_init(two_raised_b);	
 
 	mpz_set_ui(two_raised_b, 2);
-	printf("here\n");
 	mpz_pow_ui(two_raised_b, two_raised_b, 256 / 2 - 1);
-	printf("above\n");
 
 	mpz_mod(e_c, e_c, two_raised_b);
 	mpz_sub(e_2, e_c, e_1);
 	mpz_sub(e_2, e_2, e_3);
 	mpz_mod(e_2, e_2, two_raised_b);
-	printf("here\n");
-
-/*	
-	// See if we can recover r
-	// u_2 should already be r^n mod n^2
-	mpz_t r;
-	mpz_init(r);
-	mpz_mod(r, u_2, pubKey->n); // hopefully r is assigned now
-	// test r by exponentiating to n mod n^2
-	// then multiply r by g_m2 and see if that is same as ciphertext 	
-	mpz_powm(r, c->r, pubKey->n, pubKey->n_squared);
-	mpz_mul(r, r, g_m2);
-	mpz_mod(r, r, pubKey->n_squared);
-	gmp_printf("r is now: %Zd\n", r);
-	// Make sure my r is correct:
-*/
-	gmp_printf("r is : %Zd\n", r);
 
 	// Calculate z_2 (for m_i == m)
 	mpz_t z_2;
 	mpz_init(z_2);
-	printf("here2\n");
-	gmp_printf("r is: %Zd\n", r);
-	mpz_powm(z_2, r, e_2, pubKey->n);
-	printf("here2.1\n");
+
+	mpz_powm(z_2, c->r, e_2, pubKey->n);
 	mpz_mul(z_2, w, z_2);
 	mpz_mod(z_2, z_2, pubKey->n);
-	printf("here3\n");
 
 	// Voter's commit
 	printf("Voter (prover) commits the following values to the verifier\n");
@@ -443,8 +397,8 @@ int main(int argc, char *argv[])
 	// Cleaning up	
 	paillier_freepubkey(pubKey);
 	paillier_freeprvkey(secKey);
-	//paillier_freeplaintext(m);
-	//paillier_freeciphertext(c);
+	paillier_freeplaintext(m);
+	paillier_freeciphertext(c);
     
 	return 0;
 }
